@@ -16,7 +16,9 @@ package plugins
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 
 	"github.com/cilium/cilium/api/v1/models"
 	"github.com/cilium/cilium/pkg/logging"
@@ -95,8 +97,15 @@ func SetupVethWithNames(lxcIfName, tmpIfName string, mtu int, ep *models.Endpoin
 	// Disable reverse path filter on the host side veth peer to allow
 	// container addresses to be used as source address when the linux
 	// stack performs routing.
-	args := []string{"-w", "net.ipv4.conf." + lxcIfName + ".rp_filter=0"}
-	_, err = exec.Command("sysctl", args...).CombinedOutput()
+	rpFilterPath := filepath.Join("/proc", "sys", "net", "ipv4", "conf", lxcIfName, "rp_filter")
+	f, err := os.OpenFile(rpFilterPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+	if err != nil {
+		return nil, nil, fmt.Errorf("unable to open rp_filter configuration file of %s: %s",
+			lxcIfName, err)
+	}
+	std := exec.Command("echo", "0")
+	std.Stdout = f
+	err = std.Run()
 	if err != nil {
 		return nil, nil, fmt.Errorf("unable to disable rp_filter on %s: %s",
 			lxcIfName, err)
